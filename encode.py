@@ -445,7 +445,8 @@ class QYoutubeDownloadFormatDlg(QtGui.QDialog):
         
     def get_format(self):
         yft = self.youtube_format_tbl
-        return  _ydl_format_none if self.format_unsable else yft.item(yft.currentRow(), 0).text()
+        row = yft.currentRow()
+        return yft.item(row, 0).text() if row > 0 else _ydl_format_none
     
 
 
@@ -3377,7 +3378,9 @@ class QEncode(QtGui.QWidget):
         nurl = self.youtube_path_tbl.rowCount()
         if nurl == 0: return
         format_dlg = QYoutubeDownloadFormatDlg(self.youtube_path_tbl)
-        if format_dlg.exec_() == 1:
+        ret = format_dlg.exec_()
+        print(ret)
+        if ret == 1:
             fmt = format_dlg.get_format()
             self.global_download_format_btn.setText("Fmt: {}".format(fmt))
         
