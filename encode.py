@@ -261,12 +261,15 @@ _ydl_option_output_filename = "%(title)s-%(id)s.%(ext)s"
 _ydl_const_error = "ERROR"
 _ydl_const_exist = "already been downloaded"
 _ydl_const_exist_text = "Already exist"
+_ydl_const_filename = "Destination:"
 
 _find_format = re.compile('\w+', re.MULTILINE )
 _find_size = lambda x : x[x.rfind(' '):]
 _find_percent = re.compile('\d+.\d+\%', re.MULTILINE )
 _find_ydl_error = lambda x: x.strip() if x.find("ERROR:") >= 0 else None
 _file_exist = lambda x: True if x.find(_ydl_const_exist) >= 0 else False
+_find_filename = lambda x: x.split(_ydl_const_filename)[1] if x.find(_ydl_const_filename) >= 0 else None
+_exception_msg = lambda e : "=> {0} : {1}".format(type(e).__name__, str(e))
 
 _ydl_audio_codec = [
     "best", 
@@ -3418,7 +3421,13 @@ class QEncode(QtGui.QWidget):
     #        self.multiple_download_progress.setValue(self.multiple_download_step)
     
     def single_download_data_read(self):
-        data = str(self.process_single.readAll(), 'utf-8')
+        try:
+            #data = str(self.process_single.readAll(), 'utf-8')
+            #data = str(self.process_single.readAll(), 'cp949') # Windows only
+            data = str(self.process_single.readLine(), 'cp949') # Windows only
+        except Exception as e:
+            self.global_message.appendPlainText(_exception_msg(e))
+            return
 
         if _find_ydl_error(data):
             self.process_single_error = True
@@ -3428,6 +3437,12 @@ class QEncode(QtGui.QWidget):
         if _file_exist(data):
             self.single_file_already_exist = True
             msg.message_box(_ydl_const_exist_text, msg.message_normal)
+            return
+
+        fn = _find_filename(data)
+        if fn:
+            fpath, fname = os.path.split(fn.strip())
+            self.global_message.appendPlainText("=> Path: %s\n=> Name: %s"%(fpath, fname))
             return
                         
         match = _find_percent.search(data)
@@ -3445,7 +3460,13 @@ class QEncode(QtGui.QWidget):
         self.process_single = None
          
     def multiple_download_data_read(self):
-        data = str(self.process_multiple.readAll(), 'utf-8')
+        try:
+            #data = str(self.process_multiple.readAll(), 'utf-8')
+            #data = str(self.process_multiple.readAll(), 'cp949') # windows only
+            data = str(self.process_multiple.readLine(), 'cp949') # windows only
+        except Exception as e:
+            self.global_message.appendPlainText(_exception_msg(e))
+            return
         
         if _find_ydl_error(data):
             self.process_multiple_error = True
@@ -3454,9 +3475,15 @@ class QEncode(QtGui.QWidget):
             msg.message_box("URL: #%d\n%s"%(self.download_count,data), msg.message_error)
             self.global_message.appendPlainText("=> %s"%data)
             return
-    
+
         if _file_exist(data):
             self.youtube_path_tbl.item(self.download_count, 2).setText("Already exist")
+            return
+
+        fn = _find_filename(data)
+        if fn:
+            fpath, fname = os.path.split(fn.strip())
+            self.global_message.appendPlainText("=> Path: %s\n=> Name: %s"%(fpath, fname))
             return
 
         match = _find_percent.search(data)
@@ -3520,8 +3547,7 @@ class QEncode(QtGui.QWidget):
         if self.multiple_download_method.currentText() == get_sequential_download_text():
             self.global_message.appendPlainText("=> Cancel Multiple Download")
             self.process_multiple.kill()
-        else:
-            pass
+            self.single_download_timer.stop()
         
     def start_multiple_download(self):
         number_of_url = self.youtube_path_tbl.rowCount()
@@ -3697,8 +3723,7 @@ class QEncode(QtGui.QWidget):
         self.global_message.appendPlainText("=> Cancel single download")
         if tab_text == get_single_tab_text():
             self.process_single.kill()
-        elif tab_text == get_multiple_tab_text():
-            self.multiple_download_process.kill()
+            self.single_download_timer.stop()
     
     def cmd_to_msg(self, cmd, arg=""):
         if isinstance(cmd, (list,)): msg1 = ' '.join(cmd)
