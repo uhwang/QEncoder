@@ -242,6 +242,7 @@ import icon_txt
 import icon_delete_url
 import icon_trash_url
 import icon_json
+import icon_save
 import json
 import msg
 
@@ -436,6 +437,7 @@ class ProcessController(QtCore.QObject):
         self.nproc -= 1
         if not self.proc_pool[key].file_exist:
             self.proc_pool[key].status = "finished"
+            self.proc_pool[key].step = 100
             self.status_changed.emit(self.proc_pool[key])
         
     def kill(self):
@@ -535,6 +537,8 @@ class ProcessTracker(QtGui.QDialog):
     
     def timerEvent(self, e):
         if self.proc_ctrl.nproc <= 0:
+            #for p_bar in self.progress_bars.values():
+            #    p_bar.setValue(100)
             self.timer.stop()
             end_time = time.time()
             elasped_time = hms_string(end_time-self.start_time)
@@ -3445,16 +3449,16 @@ class QEncode(QtGui.QWidget):
         self.load_json_btn.setIconSize(QtCore.QSize(24,24))
         self.connect(self.load_json_btn, QtCore.SIGNAL('clicked()'), self.load_json)
         
-        self.load_text_btn = QtGui.QPushButton('', self)
-        self.load_text_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_txt.table)))
-        self.load_text_btn.setIconSize(QtCore.QSize(24,24))
-        self.connect(self.load_text_btn, QtCore.SIGNAL('clicked()'), self.load_text)
+        self.save_json_btn = QtGui.QPushButton('', self)
+        self.save_json_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_save.table)))
+        self.save_json_btn.setIconSize(QtCore.QSize(24,24))
+        self.connect(self.save_json_btn, QtCore.SIGNAL('clicked()'), self.save_json)
 
         self.global_download_format_btn = QtGui.QPushButton('Fmt: {}'.format(_ydl_format_none), self)
         self.connect(self.global_download_format_btn, QtCore.SIGNAL('clicked()'), self.choose_global_download_format)
 
         grid_btn.addWidget(self.load_json_btn, 1, 0)
-        grid_btn.addWidget(self.load_text_btn, 1, 1)
+        grid_btn.addWidget(self.save_json_btn, 1, 1)
         grid_btn.addWidget(self.global_download_format_btn, 1, 2)
         
         self.add_url_btn = QtGui.QPushButton('', self)
@@ -3543,6 +3547,30 @@ class QEncode(QtGui.QWidget):
         
         self.multiple_video_tab.setLayout(layout)
         
+    def save_json(self):
+        json_export_file = 'ydl_url_list.json'
+        json_save_path = os.path.join(self.youtube_save_path.text(), json_export_file)
+        data = OrderedDict()
+        v_list = list()
+        
+        count = self.youtube_path_tbl.rowCount()
+        if count == 0: return
+        
+        for k in range(count):
+            url = self.youtube_path_tbl.item(k,0).text()
+            desc = self.youtube_path_tbl.item(k,1).text()
+            v_list.append({"desc": desc, "url": url})
+        data["videos"] = v_list
+            
+        try:
+            with open(json_save_path, 'w') as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            self.global_message.appendPlainText("=> Error(save_json) : %s"%str(e))
+            msg.message_box(str(e), msg.message_error)
+        self.global_message.appendPlainText("URL saved at %s"%json_save_path)
+        msg.message_box("URL saved at %s"%json_save_path, msg.message_normal)
+            
     def load_json(self):
         file = QtGui.QFileDialog.getOpenFileName(self, "Load JSON", 
                 directory=self.youtube_save_path.text(), 
