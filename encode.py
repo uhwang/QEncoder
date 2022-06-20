@@ -396,6 +396,35 @@ def fetch_youtube_format_from_url(url, tbl):
 # https://stackoverflow.com/questions/50930792/pyqt-multiple-qprocess-and-output
 #-------------------------------------------------------------------------------
 
+#http://stackoverflow.com/questions/9166087/move-row-up-and-down-in-pyqt4
+def move_item_down(table):
+    rcount = table.rowCount()
+    ccount = table.columnCount()
+    if rcount <= 0: return
+    
+    row = table.currentRow()
+    column = table.currentColumn();
+    if row < rcount-1:
+        table.insertRow(row+2)
+        for i in range(ccount):
+            table.setItem(row+2,i,table.takeItem(row,i))
+            table.setCurrentCell(row+2,column)
+        table.removeRow(row)        
+
+def move_item_up(table):    
+    rcount = table.rowCount()
+    ccount = table.columnCount()
+    if rcount <= 0: return
+
+    row = table.currentRow()
+    column = table.currentColumn();
+    if row > 0:
+        table.insertRow(row-1)
+        for i in range(ccount):
+            table.setItem(row-1,i,table.takeItem(row+1,i))
+            table.setCurrentCell(row-1,column)
+        table.removeRow(row+1)        
+
 class QProcessProgressive(QtCore.QProcess):
     def __init__(self, key):
         super(QProcessProgressive, self).__init__()
@@ -449,7 +478,11 @@ class ProcessController(QtCore.QObject):
         try:
             data = str(self.proc_pool[key].readLine(), 'cp949') # Windows only            
         except Exception as e:
-            print(_exception_msg(e), data)
+            #print(_exception_msg(e), data)
+            proc.error = True
+            proc.status = "=> [%s] : %s\n%s"%(key, _exception_msg(e), data)
+            proc.step = 100
+            self.status_changed.emit(proc)
             return
             
         proc = self.proc_pool[key]
@@ -471,12 +504,21 @@ class ProcessController(QtCore.QObject):
         if match:
             self.proc_pool[key].step = int(float(match.group(0)[:-1]))
 
+# --------------------------------------------------------------------------------
+# Non-modal dialogue            
+# https://stackoverflow.com/questions/38309803/pyqt-non-modal-dialog-always-modal
+# --------------------------------------------------------------------------------           
+
 class ProcessTracker(QtGui.QDialog):
 
     status_changed = QtCore.pyqtSignal()
     
-    def __init__(self, proc_ctrl, msg):
-        super(ProcessTracker, self).__init__()
+    #def __init__(self, proc_ctrl, msg):  # modal
+    def __init__(self, parent, proc_ctrl, msg): # modaless/non-modal
+        #super(ProcessTracker, self).__init__() # modal
+        QtGui.QDialog.__init__(self, parent) # non-modal
+        self.setModal(0) # non-modal
+        
         self.proc_ctrl = proc_ctrl
         self.msg = msg
         self.initUI()
@@ -622,21 +664,32 @@ class QYoutubeDownloadFormatDlg(QtGui.QDialog):
 
         ans_layout = QtGui.QGridLayout()
         self.fetch_youtube_format_btn = QtGui.QPushButton('Fetch : Format Retrieve')
-        #self.fetch_youtube_format_btn = QtGui.QPushButton('', self)
-        #self.fetch_youtube_format_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_request_format.table)))
-        #self.fetch_youtube_format_btn.setIconSize(QtCore.QSize(16,16))
         self.connect(self.fetch_youtube_format_btn, QtCore.SIGNAL('clicked()'), self.fetch_youtube_format)
         self.no_format = QtGui.QPushButton("N/A : Not Use Fromat")
         self.connect(self.no_format, QtCore.SIGNAL('clicked()'), self.not_use_format)
+
+        self.direct_format_chk = QtGui.QCheckBox('Format Input', self)
+        self.direct_format_chk.stateChanged.connect(self.direct_format_input)
+        self.direct_format =  QtGui.QLineEdit()
+        onlyInt = QtGui.QIntValidator()
+        self.direct_format.setValidator(onlyInt)
+        self.direct_format.setEnabled(False)
+        
+        
         self.ok = QtGui.QPushButton('OK')
         self.cancel = QtGui.QPushButton('CANCEL')
         self.ok.clicked.connect(self.accept)
         self.cancel.clicked.connect(self.reject)
         
-        ans_layout.addWidget(self.fetch_youtube_format_btn)
-        ans_layout.addWidget(self.no_format)
-        ans_layout.addWidget(self.cancel)
-        ans_layout.addWidget(self.ok)
+        ans_layout.addWidget(self.fetch_youtube_format_btn, 0, 0, 1, 2)
+        ans_layout.addWidget(self.no_format, 1, 0, 1, 2)
+        
+        ans_layout.addWidget(self.direct_format_chk, 2, 0)
+        ans_layout.addWidget(self.direct_format, 2, 1)
+        
+        ans_layout.addWidget(self.cancel, 3, 0, 1, 2)
+        ans_layout.addWidget(self.ok, 4, 0, 1, 2)
+        
         ans_layout.setContentsMargins(0,0,0,0)
         ans_layout.setSpacing(5)
         
@@ -645,6 +698,12 @@ class QYoutubeDownloadFormatDlg(QtGui.QDialog):
         layout.addRow(ans_layout)
         
         self.setLayout(layout)
+        
+    def direct_format_input(self):
+        if self.direct_format_chk.isChecked():
+            self.direct_format.setEnabled(True)
+        else:
+            self.direct_format.setEnabled(False)
         
     def not_use_format(self):
         self.format_unsable = True
@@ -655,11 +714,14 @@ class QYoutubeDownloadFormatDlg(QtGui.QDialog):
         fetch_youtube_format_from_url(url, self.youtube_format_tbl)
         
     def get_format(self):
-        yft = self.youtube_format_tbl
-        row = yft.currentRow()
-        return yft.item(row, 0).text() if row > 0 else _ydl_format_none
-    
-
+        fmt = self.direct_format.text()
+        row = self.youtube_format_tbl.currentRow()
+        return fmt if self.direct_format_chk.isChecked() and  fmt != ""\
+                else self.youtube_format_tbl.item(row, 0).text()\
+                if row >= 0 else _ydl_format_none
+                  
+        #yft = self.youtube_format_tbl
+        #return yft.item(row, 0).text() if row > 0 else _ydl_format_none
 
 # =========================================================
 #                  YOUTUBE DOWNLOADER
@@ -1874,11 +1936,11 @@ class QEncode(QtGui.QWidget):
             self.final_video_name = self.final_video_path+'.%s'%self.video_format.currentText()
         
         self.video_length, self.total_video_length = self.get_total_media_length()
-        #self.encode_job_list = []
         self.delete_job_list()
         #self.accum_video_length = 0
         #self.global_message.appendPlainText(self.cmd_to_msg(arg_list))
         if nvideo > 1:
+            self.encode_job_list = []
             self.multiple_video = True
             writer = open(self.mfile_path, 'w')
             writer.write('#video list\n')
@@ -1981,27 +2043,6 @@ class QEncode(QtGui.QWidget):
         self.run_vmerge.setEnabled(True)
         self.run_amerge.setEnabled(True)
         
-    #http://stackoverflow.com/questions/9166087/move-row-up-and-down-in-pyqt4
-    def move_itme_down(self):
-        row = self.video_list_table.currentRow()
-        column = self.video_list_table.currentColumn();
-        if row < self.video_list_table.rowCount()-1:
-            self.video_list_table.insertRow(row+2)
-            for i in range(self.video_list_table.columnCount()):
-                self.video_list_table.setItem(row+2,i,self.video_list_table.takeItem(row,i))
-                self.video_list_table.setCurrentCell(row+2,column)
-            self.video_list_table.removeRow(row)        
-
-    def move_item_up(self):    
-        row = self.video_list_table.currentRow()
-        column = self.video_list_table.currentColumn();
-        if row > 0:
-            self.video_list_table.insertRow(row-1)
-            for i in range(self.video_list_table.columnCount()):
-                self.video_list_table.setItem(row-1,i,self.video_list_table.takeItem(row+1,i))
-                self.video_list_table.setCurrentCell(row-1,column)
-            self.video_list_table.removeRow(row+1)        
-
     def clear_videolist_table(self):
         for i in reversed(range(self.video_list_table.rowCount())):
             self.video_list_table.removeRow(i)
@@ -2382,12 +2423,14 @@ class QEncode(QtGui.QWidget):
         self.move_up = QtGui.QPushButton('', self)
         self.move_up.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_encode_arrow_up.table)))
         self.move_up.setIconSize(QtCore.QSize(16,16))
-        self.connect(self.move_up, QtCore.SIGNAL('clicked()'), self.move_item_up)
+        #self.connect(self.move_up, QtCore.SIGNAL('clicked()'), self.move_item_up)
+        self.connect(self.move_up, QtCore.SIGNAL('clicked()'), partial(move_item_up, self.video_list_table))
          
         self.move_down = QtGui.QPushButton('', self)
         self.move_down.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_encode_arrow_down.table)))
         self.move_down.setIconSize(QtCore.QSize(16,16))
-        self.connect(self.move_down, QtCore.SIGNAL('clicked()'), self.move_itme_down)
+        #self.connect(self.move_down, QtCore.SIGNAL('clicked()'), self.move_item_down)
+        self.connect(self.move_down, QtCore.SIGNAL('clicked()'), partial(move_item_down, self.video_list_table))
         
         self.sort_asc = QtGui.QPushButton('', self)
         self.sort_asc.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_encode_table_sort_asc.table)))
@@ -3317,7 +3360,7 @@ class QEncode(QtGui.QWidget):
         self.single_download_audio_quality_cmb.setCurrentIndex(5)
         
         self.single_download_progress = QtGui.QProgressBar(self)
-        grid_btn.addWidget(self.single_download_progress, 3,0, 1, 3)
+        grid_btn.addWidget(self.single_download_progress, 4,0, 1, 3)
         
         #av_group = QtGui.QGroupBox()
         moods = [QtGui.QRadioButton("A Only"), QtGui.QRadioButton("Video")]
@@ -3342,6 +3385,20 @@ class QEncode(QtGui.QWidget):
 
         self.choose_format_cmb = QtGui.QComboBox()
         grid_btn.addWidget(self.choose_format_cmb, 1,2)
+        
+        self.direct_format_chk = QtGui.QCheckBox("User Format")
+        self.direct_format_chk.stateChanged.connect(self.direct_format_input)
+        
+        self.direct_format = QtGui.QLineEdit()
+        self.direct_format.setMaximumWidth(90)
+        onlyInt = QtGui.QIntValidator()
+        self.direct_format.setValidator(onlyInt)
+        self.direct_format.setEnabled(False)
+        
+        
+        grid_btn.addWidget(self.direct_format_chk, 3, 0)
+        grid_btn.addWidget(self.direct_format, 3, 1)
+        
         grid_btn.setContentsMargins(0,0,0,0)
         grid_btn.setSpacing(5)
         
@@ -3365,6 +3422,12 @@ class QEncode(QtGui.QWidget):
         
         self.single_video_tab.setLayout(layout)
         
+    def direct_format_input(self):
+        if self.direct_format_chk.isChecked():
+            self.direct_format.setEnabled(True)
+        else:
+            self.direct_format.setEnabled(False)
+    
     def single_download_AV_codec_clicked(self):
         id = self.mood_av_button_group.checkedId()
         if id == 0:
@@ -3427,6 +3490,8 @@ class QEncode(QtGui.QWidget):
             self.choose_format_cmb.removeItem(row+1)
         
     def multiple_video_tab_UI(self):
+        import icon_arrow_down
+        import icon_arrow_up
         
         layout = QtGui.QFormLayout()
         
@@ -3442,8 +3507,38 @@ class QEncode(QtGui.QWidget):
         #header.setResizeMode(1, QtGui.QHeaderView.ResizeToContents)
         #header.setResizeMode(2, QtGui.QHeaderView.ResizeToContents)        
         
-        grid_btn = QtGui.QGridLayout()
+        grid_table_btn = QtGui.QGridLayout()
         
+        self.add_url_btn = QtGui.QPushButton('', self)
+        self.add_url_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_add_row.table)))
+        self.add_url_btn.setIconSize(QtCore.QSize(24,24))
+        self.connect(self.add_url_btn, QtCore.SIGNAL('clicked()'), self.add_url)
+
+        self.move_url_up_btn = QtGui.QPushButton('', self)
+        self.move_url_up_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_arrow_up.table)))
+        self.move_url_up_btn.setIconSize(QtCore.QSize(24,24))
+        self.connect(self.move_url_up_btn, QtCore.SIGNAL('clicked()'), partial(move_item_up, self.youtube_path_tbl))
+
+        self.move_url_down_btn = QtGui.QPushButton('', self)
+        self.move_url_down_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_arrow_down.table)))
+        self.move_url_down_btn.setIconSize(QtCore.QSize(24,24))
+        self.connect(self.move_url_down_btn, QtCore.SIGNAL('clicked()'), partial(move_item_down, self.youtube_path_tbl))
+        
+        self.delete_btn = QtGui.QPushButton('', self)
+        self.delete_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_delete_url.table)))
+        self.delete_btn.setIconSize(QtCore.QSize(24,24))
+        self.connect(self.delete_btn, QtCore.SIGNAL('clicked()'), self.delete_item)
+        
+        self.delete_all_btn = QtGui.QPushButton('', self)
+        self.delete_all_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_trash_url.table)))
+        self.delete_all_btn.setIconSize(QtCore.QSize(24,24))
+        self.connect(self.delete_all_btn, QtCore.SIGNAL('clicked()'), self.delete_all_item)
+
+        grid_table_btn.addWidget(self.add_url_btn, 0, 0)
+        grid_table_btn.addWidget(self.move_url_up_btn, 0, 1)
+        grid_table_btn.addWidget(self.move_url_down_btn, 0, 2)
+        grid_table_btn.addWidget(self.delete_btn, 0, 3)
+
         self.load_json_btn = QtGui.QPushButton('', self)
         self.load_json_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_json.table)))
         self.load_json_btn.setIconSize(QtCore.QSize(24,24))
@@ -3457,28 +3552,12 @@ class QEncode(QtGui.QWidget):
         self.global_download_format_btn = QtGui.QPushButton('Fmt: {}'.format(_ydl_format_none), self)
         self.connect(self.global_download_format_btn, QtCore.SIGNAL('clicked()'), self.choose_global_download_format)
 
-        grid_btn.addWidget(self.load_json_btn, 1, 0)
-        grid_btn.addWidget(self.save_json_btn, 1, 1)
-        grid_btn.addWidget(self.global_download_format_btn, 1, 2)
+        grid_table_btn.addWidget(self.load_json_btn, 1, 0)
+        grid_table_btn.addWidget(self.save_json_btn, 1, 1)
+        grid_table_btn.addWidget(self.delete_all_btn, 1, 2)
         
-        self.add_url_btn = QtGui.QPushButton('', self)
-        self.add_url_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_add_row.table)))
-        self.add_url_btn.setIconSize(QtCore.QSize(24,24))
-        self.connect(self.add_url_btn, QtCore.SIGNAL('clicked()'), self.add_url)
         
-        self.delete_btn = QtGui.QPushButton('', self)
-        self.delete_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_delete_url.table)))
-        self.delete_btn.setIconSize(QtCore.QSize(24,24))
-        self.connect(self.delete_btn, QtCore.SIGNAL('clicked()'), self.delete_item)
-        
-        self.delete_all_btn = QtGui.QPushButton('', self)
-        self.delete_all_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_trash_url.table)))
-        self.delete_all_btn.setIconSize(QtCore.QSize(24,24))
-        self.connect(self.delete_all_btn, QtCore.SIGNAL('clicked()'), self.delete_all_item)
-
-        grid_btn.addWidget(self.add_url_btn, 0, 0)
-        grid_btn.addWidget(self.delete_btn, 0, 1)
-        grid_btn.addWidget(self.delete_all_btn, 0, 2)
+        grid_option_btn = QtGui.QGridLayout()
         
         self.multiple_download_audio_codec_cmb = QtGui.QComboBox()
         self.multiple_download_audio_codec_cmb.addItems(_ydl_audio_codec)
@@ -3489,10 +3568,10 @@ class QEncode(QtGui.QWidget):
         self.multiple_download_video_codec_cmb = QtGui.QComboBox()
         self.multiple_download_video_codec_cmb.addItems(_ydl_video_codec)
         
-        grid_btn.addWidget(self.multiple_download_audio_codec_cmb, 3,0)
-        grid_btn.addWidget(self.multiple_download_audio_quality_cmb, 3,1)
-        grid_btn.addWidget(self.multiple_download_video_codec_cmb, 3,2)
-        
+        grid_option_btn.addWidget(self.multiple_download_audio_codec_cmb, 1,0)
+        grid_option_btn.addWidget(self.multiple_download_audio_quality_cmb, 1,1)
+        grid_option_btn.addWidget(self.multiple_download_video_codec_cmb, 1,2)
+
         # default audio quality for ffmpeg is 5
         self.multiple_download_audio_quality_cmb.setCurrentIndex(5)
         
@@ -3514,20 +3593,24 @@ class QEncode(QtGui.QWidget):
             self.connect(moods[i], QtCore.SIGNAL("clicked()"), self.multiple_download_AV_codec_clicked)
 
         self.multiple_download_AV_codec_clicked()
-        grid_btn.addLayout(button_layout, 2, 0, 1, 2)
+        grid_option_btn.addLayout(button_layout, 0, 0, 1, 2)
+        grid_option_btn.addWidget(self.global_download_format_btn, 0, 3)
 
-        self.multiple_download_progress = QtGui.QProgressBar(self)
-        grid_btn.addWidget(self.multiple_download_progress, 4, 0, 1, 3)
-
-        grid_btn.setContentsMargins(0,0,0,0)
-        grid_btn.setSpacing(5)
-        
         self.multiple_download_method = QtGui.QComboBox()
         self.multiple_download_method.addItems(_ydl_multiple_download_method)
         self.multiple_download_method.setFixedWidth(75)
-        grid_btn.addWidget(self.multiple_download_method, 2, 2)
+        grid_option_btn.addWidget(self.multiple_download_method, 1, 3)
         
         
+        
+        self.multiple_download_progress = QtGui.QProgressBar(self)
+        grid_option_btn.addWidget(self.multiple_download_progress, 2, 0, 1, 4)
+
+        grid_option_btn.setContentsMargins(0,0,0,0)
+        grid_option_btn.setSpacing(5)
+        
+        
+
         run_option = QtGui.QHBoxLayout()
         self.start_multiple_download_btn = QtGui.QPushButton()
         self.start_multiple_download_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_download.table)))
@@ -3542,19 +3625,23 @@ class QEncode(QtGui.QWidget):
         run_option.addWidget(self.cancel_multiple_download_btn)
         
         layout.addRow(self.youtube_path_tbl)
-        layout.addRow(grid_btn)
+        layout.addRow(grid_table_btn)
+        layout.addRow(grid_option_btn)
         layout.addRow(run_option)
         
         self.multiple_video_tab.setLayout(layout)
         
     def save_json(self):
-        json_export_file = 'ydl_url_list.json'
-        json_save_path = os.path.join(self.youtube_save_path.text(), json_export_file)
-        data = OrderedDict()
-        v_list = list()
-        
         count = self.youtube_path_tbl.rowCount()
         if count == 0: return
+
+        json_export_file = 'ydl_url_list.json'
+        json_save_path = os.path.join(self.youtube_save_path.text(), json_export_file)
+        json_save_file = QtGui.QFileDialog.getSaveFileName(None, 'Save File', json_save_path, 
+                         'JSON files (*.json);;All files (*)')
+        
+        data = OrderedDict()
+        v_list = list()
         
         for k in range(count):
             url = self.youtube_path_tbl.item(k,0).text()
@@ -3563,13 +3650,16 @@ class QEncode(QtGui.QWidget):
         data["videos"] = v_list
             
         try:
-            with open(json_save_path, 'w') as f:
+            #with open(json_save_path, 'w') as f:
+            with open(json_save_file, 'w') as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
         except Exception as e:
             self.global_message.appendPlainText("=> Error(save_json) : %s"%str(e))
             msg.message_box(str(e), msg.message_error)
-        self.global_message.appendPlainText("URL saved at %s"%json_save_path)
-        msg.message_box("URL saved at %s"%json_save_path, msg.message_normal)
+        #self.global_message.appendPlainText("URL saved at %s"%json_save_path)
+        #msg.message_box("URL saved at %s"%json_save_path, msg.message_normal)
+        self.global_message.appendPlainText("URL saved at %s"%json_save_file)
+        msg.message_box("URL saved at %s"%json_save_file, msg.message_normal)
             
     def load_json(self):
         file = QtGui.QFileDialog.getOpenFileName(self, "Load JSON", 
@@ -3604,9 +3694,9 @@ class QEncode(QtGui.QWidget):
         if nurl == 0: return
         format_dlg = QYoutubeDownloadFormatDlg(self.youtube_path_tbl)
         ret = format_dlg.exec_()
-        print(ret)
         if ret == 1:
             fmt = format_dlg.get_format()
+            print(fmt)
             self.global_download_format_btn.setText("Fmt: {}".format(fmt))
         
     def multiple_download_AV_codec_clicked(self):
@@ -3851,11 +3941,12 @@ class QEncode(QtGui.QWidget):
                     self.enable_single_download_buttons()
             elif dm == get_concurrent_download_text():
                 pc = ProcessController(self.multiple_download_job_list)
-                tp = ProcessTracker(pc, self.global_message)
+                #tp = ProcessTracker(pc, self.global_message)
+                tp = ProcessTracker(self, pc, self.global_message)
                 pc.status_changed.connect(self.set_download_status)
                 tp.status_changed.connect(self.clear_download_status)
-                tp.exec_()
-                #tp.show()
+                #tp.exec_()
+                tp.show()
                 
     def clear_download_status(self):
         for k in range(self.youtube_path_tbl.rowCount()):
@@ -3870,6 +3961,7 @@ class QEncode(QtGui.QWidget):
         elif proc.error:
             self.youtube_path_tbl.item(key_num, 0).setBackground(_ydl_color_error)
             self.youtube_path_tbl.item(key_num, 2).setText("Error")
+            self.global_message.appendPlainText(proc.status)
         else:
             self.youtube_path_tbl.item(key_num, 0).setBackground(_ydl_color_finished)
             self.youtube_path_tbl.item(key_num, 2).setText("Finished")
@@ -3889,7 +3981,12 @@ class QEncode(QtGui.QWidget):
         if tab_text == get_single_tab_text():
         
             # format selected
-            if self.choose_format_cmb.currentIndex() > 0:
+            fmt = self.direct_format.text()
+            
+            if self.direct_format_chk.isChecked() and fmt != "":
+                arg_list.extend(['-f', fmt])
+                
+            elif self.choose_format_cmb.currentIndex() > 0:
                 arg_list.extend(['-f', self.choose_format_cmb.currentText()])
 
             id = self.mood_av_button_group.checkedId()
