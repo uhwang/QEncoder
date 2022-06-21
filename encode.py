@@ -255,31 +255,34 @@ _youtube_tab_text = [
 # https://stackoverflow.com/questions/28735459/how-to-validate-youtube-url-in-client-side-in-text-box
 _valid_youtube_url = re.compile("^(?:https?:\/\/)?(?:m\.|www\.)?(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))((\w|-){11})(?:\S+)?$")
 
-_ydl_color_error = QtGui.QColor(247,79,83)
+_ydl_color_error      = QtGui.QColor(247,79,83)
 _ydl_color_file_exist = QtGui.QColor(158,248,160)
-_ydl_color_finished = QtGui.QColor(230,213,89)
-_ydl_color_white = QtGui.QColor(255,255,255)
+_ydl_color_finished   = QtGui.QColor(230,213,89)
+_ydl_color_white      = QtGui.QColor(255,255,255)
 
-_ydl_option_video_list = "--flat-playlist"
-_ydl_option_skip_download = "--skip-download"
-_ydl_option_extract_audio = "--extract-audio"
-_ydl_option_audio_format = "--audio-format"
-_ydl_option_encode_video = "--recode-video"
-_ydl_option_audio_quality = "--audio-quality"
-_ydl_option_output = "-o"
+_ydl_option_video_list      = "--flat-playlist"
+_ydl_option_skip_download   = "--skip-download"
+_ydl_option_extract_audio   = "--extract-audio"
+_ydl_option_audio_format    = "--audio-format"
+_ydl_option_encode_video    = "--recode-video"
+_ydl_option_audio_quality   = "--audio-quality"
+_ydl_option_output          = "-o"
 _ydl_option_output_filename = "%(title)s-%(id)s.%(ext)s"
-_ydl_const_error = "ERROR"
-_ydl_const_exist = "already been downloaded"
-_ydl_const_exist_text = "Already exist"
-_ydl_const_filename = "Destination:"
+_ydl_const_error            = "ERROR"
+_ydl_const_exist            = "already been downloaded"
+_ydl_const_exist_text       = "Already exist"
+_ydl_const_filename         = "Destination:"
 
-_find_format = re.compile('\w+', re.MULTILINE )
-_find_size = lambda x : x[x.rfind(' '):]
-_find_percent = re.compile('\d+.\d+\%', re.MULTILINE )
+_find_format    = re.compile('\w+', re.MULTILINE )
+_find_percent   = re.compile('\d+.\d+\%', re.MULTILINE )
+_find_size      = lambda x: x[x.rfind(' '):]
 _find_ydl_error = lambda x: x.strip() if x.find("ERROR:") >= 0 else None
-_file_exist = lambda x: True if x.find(_ydl_const_exist) >= 0 else False
-_find_filename = lambda x: x.split(_ydl_const_filename)[1] if x.find(_ydl_const_filename) >= 0 else None
-_exception_msg = lambda e : "=> {0} : {1}".format(type(e).__name__, str(e))
+_file_exist     = lambda x: True if x.find(_ydl_const_exist) >= 0 else False
+_find_filename  = lambda x: x.split(_ydl_const_filename)[1] if x.find(_ydl_const_filename) >= 0 else None
+_exception_msg  = lambda e: "=> {0} : {1}".format(type(e).__name__, str(e))
+
+_ydl_format_none   = "N/A"
+_ydl_audio_quality = [ str(x) for x in range(10)]
 
 _ydl_audio_codec = [
     "best", 
@@ -309,9 +312,6 @@ _ydl_multiple_download_method = [
     "Concurrent"
 ]
 
-_ydl_format_none = "N/A"
-
-_ydl_audio_quality = [ str(x) for x in range(10)]
 
 def get_single_tab_text() : return _youtube_tab_text[0]
 def get_multiple_tab_text() : return _youtube_tab_text[1]
@@ -463,6 +463,9 @@ class ProcessController(QtCore.QObject):
             p.start(j[0], j[1])
             
     def check_finshed(self, key):
+        if not self.proc_pool: 
+            return
+        
         self.nproc -= 1
         if not self.proc_pool[key].file_exist:
             self.proc_pool[key].status = "finished"
@@ -473,6 +476,10 @@ class ProcessController(QtCore.QObject):
         if self.proc_pool:
             for p in self.proc_pool.values():
                 if p: p.kill()
+                
+    def delete_process(self):
+        self.proc_pool = None
+        self.nproc = 0
         
     def read_data(self, key):
         try:
@@ -509,9 +516,12 @@ class ProcessController(QtCore.QObject):
 # https://stackoverflow.com/questions/38309803/pyqt-non-modal-dialog-always-modal
 # --------------------------------------------------------------------------------           
 
+_ydl_download_start = 0x01
+_ydl_download_finish = 0x02
+
 class ProcessTracker(QtGui.QDialog):
 
-    status_changed = QtCore.pyqtSignal()
+    status_changed = QtCore.pyqtSignal(int)
     
     #def __init__(self, proc_ctrl, msg):  # modal
     def __init__(self, parent, proc_ctrl, msg): # modaless/non-modal
@@ -586,6 +596,7 @@ class ProcessTracker(QtGui.QDialog):
             elasped_time = hms_string(end_time-self.start_time)
             self.msg.appendPlainText("=> Elasped time: {}\n=> Concurrent download Done!".format(elasped_time))
             self.enable_download_buttons()
+            #self.status_changed.emit(_ydl_download_finish)
             return
             
         for p in self.proc_ctrl.proc_pool.values():
@@ -595,7 +606,7 @@ class ProcessTracker(QtGui.QDialog):
         self.progress_bars[proc.key].setValue(proc.step)
         
     def start_download(self):
-        self.status_changed.emit()
+        self.status_changed.emit(_ydl_download_start)
         
         for p_bar in self.progress_bars.values():
             p_bar.setValue(0)
@@ -623,14 +634,37 @@ class ProcessTracker(QtGui.QDialog):
         self.start_btn.setEnabled(True)
         
     def cancel_download(self):
+        if self.proc_ctrl.nproc > 0:
+            ret = msg.message_box("Download NOT finished!\nDo you want to Quit?", msg.message_yesno)
+            if ret == QtGui.QMessageBox.No: 
+                return
         self.proc_ctrl.kill()
         self.enable_download_buttons()
         
-    def exit_download(self):
+    def preprocess_exit(self):
+        self.timer.stop()
         self.proc_ctrl.kill()
-        self.reject()
+        self.proc_ctrl.delete_process()
+        self.status_changed.emit(_ydl_download_finish)
         
+    def exit_download(self):
+        if self.proc_ctrl.nproc > 0:
+            ret = msg.message_box("Download NOT finished!\nDo you want to Quit?", msg.message_yesno)
+            if ret == QtGui.QMessageBox.No:
+                return
+        self.preprocess_exit()
+        self.accept()
         
+    def closeEvent(self, evnt):
+        if self.proc_ctrl.nproc > 0:
+            ret = msg.message_box("Download NOT finished!\nDo you want to Quit?", msg.message_yesno)
+            if ret == QtGui.QMessageBox.No: 
+                evnt.ignore()
+                return
+        
+        self.preprocess_exit()
+        super(ProcessTracker, self).closeEvent(evnt)
+            
 class QYoutubeDownloadFormatDlg(QtGui.QDialog):
     def __init__(self, url_table):
         super(QYoutubeDownloadFormatDlg, self).__init__()
@@ -665,7 +699,7 @@ class QYoutubeDownloadFormatDlg(QtGui.QDialog):
         ans_layout = QtGui.QGridLayout()
         self.fetch_youtube_format_btn = QtGui.QPushButton('Fetch : Format Retrieve')
         self.connect(self.fetch_youtube_format_btn, QtCore.SIGNAL('clicked()'), self.fetch_youtube_format)
-        self.no_format = QtGui.QPushButton("N/A : Not Use Fromat")
+        self.no_format = QtGui.QPushButton("Do Not Use Fromat")
         self.connect(self.no_format, QtCore.SIGNAL('clicked()'), self.not_use_format)
 
         self.direct_format_chk = QtGui.QCheckBox('Format Input', self)
@@ -3326,7 +3360,7 @@ class QEncode(QtGui.QWidget):
         grid_btn = QtGui.QGridLayout()
         self.fetch_youtube_format_btn = QtGui.QPushButton('', self)
         self.fetch_youtube_format_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_request_format.table)))
-        self.fetch_youtube_format_btn.setIconSize(QtCore.QSize(20,20))
+        self.fetch_youtube_format_btn.setIconSize(QtCore.QSize(24,24))
         self.connect(self.fetch_youtube_format_btn, QtCore.SIGNAL('clicked()'), self.fetch_youtube_format)
   
         self.delete_btn = QtGui.QPushButton('', self)
@@ -3352,18 +3386,19 @@ class QEncode(QtGui.QWidget):
         self.single_download_video_codec_cmb = QtGui.QComboBox()
         self.single_download_video_codec_cmb.addItems(_ydl_video_codec)
         
-        grid_btn.addWidget(self.single_download_audio_codec_cmb, 2,0)
-        grid_btn.addWidget(self.single_download_audio_quality_cmb, 2,1)
-        grid_btn.addWidget(self.single_download_video_codec_cmb, 2,2)
+        grid_option_btn = QtGui.QGridLayout()
+        grid_option_btn.addWidget(self.single_download_audio_codec_cmb, 2,0)
+        grid_option_btn.addWidget(self.single_download_audio_quality_cmb, 2,1)
+        grid_option_btn.addWidget(self.single_download_video_codec_cmb, 2,2)
         
         # default audio quality for ffmpeg is 5
         self.single_download_audio_quality_cmb.setCurrentIndex(5)
         
         self.single_download_progress = QtGui.QProgressBar(self)
-        grid_btn.addWidget(self.single_download_progress, 4,0, 1, 3)
+        grid_option_btn.addWidget(self.single_download_progress, 4,0, 1, 3)
         
         #av_group = QtGui.QGroupBox()
-        moods = [QtGui.QRadioButton("A Only"), QtGui.QRadioButton("Video")]
+        moods = [QtGui.QRadioButton("Audio Only"), QtGui.QRadioButton("Video")]
         # Set a radio button to be checked by default
         moods[1].setChecked(True)   
 
@@ -3381,10 +3416,10 @@ class QEncode(QtGui.QWidget):
 
         self.single_download_AV_codec_clicked()
 
-        grid_btn.addLayout(button_layout, 1, 0, 1, 2)
+        grid_option_btn.addLayout(button_layout, 1, 0, 1, 2)
 
         self.choose_format_cmb = QtGui.QComboBox()
-        grid_btn.addWidget(self.choose_format_cmb, 1,2)
+        grid_option_btn.addWidget(self.choose_format_cmb, 1,2)
         
         self.direct_format_chk = QtGui.QCheckBox("User Format")
         self.direct_format_chk.stateChanged.connect(self.direct_format_input)
@@ -3396,11 +3431,11 @@ class QEncode(QtGui.QWidget):
         self.direct_format.setEnabled(False)
         
         
-        grid_btn.addWidget(self.direct_format_chk, 3, 0)
-        grid_btn.addWidget(self.direct_format, 3, 1)
+        grid_option_btn.addWidget(self.direct_format_chk, 3, 0)
+        grid_option_btn.addWidget(self.direct_format, 3, 1)
         
-        grid_btn.setContentsMargins(0,0,0,0)
-        grid_btn.setSpacing(5)
+        grid_option_btn.setContentsMargins(0,0,0,0)
+        grid_option_btn.setSpacing(5)
         
         run_option = QtGui.QHBoxLayout()
         self.start_single_download_btn = QtGui.QPushButton()
@@ -3418,6 +3453,7 @@ class QEncode(QtGui.QWidget):
         layout.addRow(grid)
         layout.addRow(self.youtube_format_tbl)
         layout.addRow(grid_btn)
+        layout.addRow(grid_option_btn)
         layout.addRow(run_option)
         
         self.single_video_tab.setLayout(layout)
@@ -3576,7 +3612,7 @@ class QEncode(QtGui.QWidget):
         self.multiple_download_audio_quality_cmb.setCurrentIndex(5)
         
         #av_group = QtGui.QGroupBox()
-        moods = [QtGui.QRadioButton("A Only"), QtGui.QRadioButton("Video")]
+        moods = [QtGui.QRadioButton("Audio Only"), QtGui.QRadioButton("Video")]
         # Set a radio button to be checked by default
         moods[1].setChecked(True)   
 
@@ -3598,7 +3634,7 @@ class QEncode(QtGui.QWidget):
 
         self.multiple_download_method = QtGui.QComboBox()
         self.multiple_download_method.addItems(_ydl_multiple_download_method)
-        self.multiple_download_method.setFixedWidth(75)
+        #self.multiple_download_method.setFixedWidth(75)
         grid_option_btn.addWidget(self.multiple_download_method, 1, 3)
         
         
@@ -3696,7 +3732,6 @@ class QEncode(QtGui.QWidget):
         ret = format_dlg.exec_()
         if ret == 1:
             fmt = format_dlg.get_format()
-            print(fmt)
             self.global_download_format_btn.setText("Fmt: {}".format(fmt))
         
     def multiple_download_AV_codec_clicked(self):
@@ -3790,6 +3825,7 @@ class QEncode(QtGui.QWidget):
             return
 
         if _file_exist(data):
+            self.youtube_path_tbl.item(self.download_count, 0).setBackground(_ydl_color_file_exist)
             self.youtube_path_tbl.item(self.download_count, 2).setText("Already exist")
             return
 
@@ -3860,8 +3896,9 @@ class QEncode(QtGui.QWidget):
         if not self.process_multiple: return
         if self.multiple_download_method.currentText() == get_sequential_download_text():
             self.global_message.appendPlainText("=> Cancel Multiple Download")
-            self.process_multiple.kill()
             self.single_download_timer.stop()
+            self.multiple_download_job_list.clear()
+            self.process_multiple.kill()
         
     def start_multiple_download(self):
         number_of_url = self.youtube_path_tbl.rowCount()
@@ -3881,20 +3918,21 @@ class QEncode(QtGui.QWidget):
             if fmt.find(_ydl_format_none) < 0:
                 arg_list.extend(["-f", re.search("\d+", fmt).group(0)])
 
-            if id == 0: # audio only
-                audio_codec = self.multiple_download_audio_codec_cmb.currentText()
-                arg_list.extend([_ydl_option_extract_audio,
-                                 _ydl_option_audio_format,
-                                 audio_codec])
-                                
-                if audio_codec != _ydl_best_audio_codec:
-                    arg_list.extend([_ydl_option_audio_quality, 
-                                     self.multiple_download_audio_quality_cmb.currentText()])
-            
-            elif id == 1: # video
-                if self.multiple_download_video_codec_cmb.currentIndex() > 0:
-                    arg_list.extend([_ydl_option_encode_video,
-                                     self.multiple_download_video_codec_cmb.currentText()])
+            else:
+                if id == 0: # audio only
+                    audio_codec = self.multiple_download_audio_codec_cmb.currentText()
+                    arg_list.extend([_ydl_option_extract_audio,
+                                    _ydl_option_audio_format,
+                                    audio_codec])
+                                    
+                    if audio_codec != _ydl_best_audio_codec:
+                        arg_list.extend([_ydl_option_audio_quality, 
+                                        self.multiple_download_audio_quality_cmb.currentText()])
+                
+                elif id == 1: # video
+                    if self.multiple_download_video_codec_cmb.currentIndex() > 0:
+                        arg_list.extend([_ydl_option_encode_video,
+                                        self.multiple_download_video_codec_cmb.currentText()])
                                      
             save_folder = os.path.join(self.youtube_save_path.text(), _ydl_option_output_filename)
             arg_list.extend([_ydl_option_output, save_folder])
@@ -3940,18 +3978,24 @@ class QEncode(QtGui.QWidget):
                     self.global_message.appendPlainText("=> Error: %s"%err)
                     self.enable_single_download_buttons()
             elif dm == get_concurrent_download_text():
+                self.disable_multiple_download_buttons()
                 pc = ProcessController(self.multiple_download_job_list)
                 #tp = ProcessTracker(pc, self.global_message)
                 tp = ProcessTracker(self, pc, self.global_message)
                 pc.status_changed.connect(self.set_download_status)
-                tp.status_changed.connect(self.clear_download_status)
+                tp.status_changed.connect(self.set_download_button_status)
                 #tp.exec_()
                 tp.show()
                 
-    def clear_download_status(self):
-        for k in range(self.youtube_path_tbl.rowCount()):
-            self.youtube_path_tbl.item(k,0).setBackground(_ydl_color_white)
-            self.youtube_path_tbl.item(k,2).setText("")
+    
+    def set_download_button_status(self, status):
+        if status == _ydl_download_start:
+            self.disable_multiple_download_buttons()
+            for k in range(self.youtube_path_tbl.rowCount()):
+                self.youtube_path_tbl.item(k,0).setBackground(_ydl_color_white)
+                self.youtube_path_tbl.item(k,2).setText("")
+        elif status == _ydl_download_finish:
+            self.enable_multiple_download_buttons()
             
     def set_download_status(self, proc):
         key_num = int(proc.key.split(' ')[1])
@@ -3989,29 +4033,30 @@ class QEncode(QtGui.QWidget):
             elif self.choose_format_cmb.currentIndex() > 0:
                 arg_list.extend(['-f', self.choose_format_cmb.currentText()])
 
-            id = self.mood_av_button_group.checkedId()
-            if id == 0: # audio only
-                audio_codec = self.single_download_audio_codec_cmb.currentText()
-                arg_list.extend([ _ydl_option_extract_audio,
-                                  _ydl_option_audio_format,
-                                  audio_codec])
-                                  
-                if audio_codec != _ydl_best_audio_codec:
-                    arg_list.extend([ _ydl_option_audio_quality, 
-                                      self.single_download_audio_quality_cmb.currentText()])
-            
-            elif id == 1: # video
-                if self.single_download_video_codec_cmb.currentIndex() > 0:
-                    arg_list.extend([ _ydl_option_encode_video,
-                                      self.single_download_video_codec_cmb.currentText()
-                                    ])
-
+            else:
+                id = self.mood_av_button_group.checkedId()
+                if id == 0: # audio only
+                    audio_codec = self.single_download_audio_codec_cmb.currentText()
+                    arg_list.extend([ _ydl_option_extract_audio,
+                                    _ydl_option_audio_format,
+                                    audio_codec])
+                                    
+                    if audio_codec != _ydl_best_audio_codec:
+                        arg_list.extend([ _ydl_option_audio_quality, 
+                                        self.single_download_audio_quality_cmb.currentText()])
+                
+                elif id == 1: # video
+                    if self.single_download_video_codec_cmb.currentIndex() > 0:
+                        arg_list.extend([ _ydl_option_encode_video,
+                                        self.single_download_video_codec_cmb.currentText()
+                                        ])
+    
             if url.find('list') > -1:
                 ret = msg.message_box("Do you want to download multiple videos?", msg.message_warning)
                 if ret is False:
                     return
                 self.nvideo = get_video_count_from_youtube_list(url)
-
+    
             else:
                 self.nvideo = 1
             
