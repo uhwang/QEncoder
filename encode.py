@@ -282,7 +282,8 @@ _find_filename  = lambda x: x.split(_ydl_const_filename)[1] if x.find(_ydl_const
 _exception_msg  = lambda e: "=> {0} : {1}".format(type(e).__name__, str(e))
 
 _ydl_format_none   = "N/A"
-_ydl_audio_quality = [ str(x) for x in range(10)]
+#_ydl_audio_quality = [ str(x) for x in range(10)]
+_ydl_audio_quality = ["0 better", "1", "2", "3", "4", "5 default", "6", "7", "8", "9 worse"]
 
 _ydl_audio_codec = [
     "best", 
@@ -450,7 +451,7 @@ class ProcessController(QtCore.QObject):
         self.nproc = 0
         
         for k, _ in enumerate(self.job_list):
-            key = self.key_formula%k
+            key = self.key_formula%(k+1)
             proc = QProcessProgressive(key)
             proc.setReadChannel(QtCore.QProcess.StandardOutput)
             proc.setProcessChannelMode(QtCore.QProcess.MergedChannels)
@@ -485,7 +486,6 @@ class ProcessController(QtCore.QObject):
         try:
             data = str(self.proc_pool[key].readLine(), 'cp949') # Windows only            
         except Exception as e:
-            #print(_exception_msg(e), data)
             proc.error = True
             proc.status = "=> [%s] : %s\n%s"%(key, _exception_msg(e), data)
             proc.step = 100
@@ -545,7 +545,9 @@ class ProcessTracker(QtGui.QDialog):
         self.progress_bars = OrderedDict()
         
         for k, _ in enumerate(self.proc_ctrl.job_list):
-            key = self.proc_ctrl.key_formula%k
+            # You need to change ProcessController.start also as follows:
+            #  k --> (k+1)
+            key = self.proc_ctrl.key_formula%(k+1)
             grid.addWidget(QtGui.QLabel(key), k, 0)
             p_bar = QtGui.QProgressBar()
             self.progress_bars[key] = p_bar
@@ -578,7 +580,6 @@ class ProcessTracker(QtGui.QDialog):
         option.addWidget(self.cancel_btn)
         option.addWidget(self.exit_btn)
         
-        #layout.addRow(grid)
         layout.addWidget(self.scroll)
         layout.addRow(option)
         
@@ -589,14 +590,11 @@ class ProcessTracker(QtGui.QDialog):
     
     def timerEvent(self, e):
         if self.proc_ctrl.nproc <= 0:
-            #for p_bar in self.progress_bars.values():
-            #    p_bar.setValue(100)
             self.timer.stop()
             end_time = time.time()
             elasped_time = hms_string(end_time-self.start_time)
             self.msg.appendPlainText("=> Elasped time: {}\n=> Concurrent download Done!".format(elasped_time))
             self.enable_download_buttons()
-            #self.status_changed.emit(_ydl_download_finish)
             return
             
         for p in self.proc_ctrl.proc_pool.values():
@@ -3306,9 +3304,7 @@ class QEncode(QtGui.QWidget):
         self.multiple_video_tab_UI()
         
         self.time_font = QtGui.QFont("Courier",11,True)
-        #self.single_download_timer = QtCore.QTimer() 
         self.single_download_timer = QtCore.QBasicTimer()
-        #self.multiple_download_timer = QtCore.QTimer()
         self.multiple_download_timer = QtCore.QBasicTimer()
         
         self.process_single = None
@@ -3338,7 +3334,6 @@ class QEncode(QtGui.QWidget):
         grid = QtGui.QGridLayout()
         grid.addWidget(QtGui.QLabel("URL"), 1,0)
         self.youtube_url = QtGui.QLineEdit()
-        #self.youtube_url.setText("Youtube URL")
         grid.addWidget(self.youtube_url, 1, 1)
         
         self.youtube_format_tbl = QtGui.QTableWidget()
@@ -3361,16 +3356,19 @@ class QEncode(QtGui.QWidget):
         self.fetch_youtube_format_btn = QtGui.QPushButton('', self)
         self.fetch_youtube_format_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_request_format.table)))
         self.fetch_youtube_format_btn.setIconSize(QtCore.QSize(24,24))
+        self.fetch_youtube_format_btn.setToolTip("Fetch fromats from the URL")
         self.connect(self.fetch_youtube_format_btn, QtCore.SIGNAL('clicked()'), self.fetch_youtube_format)
   
         self.delete_btn = QtGui.QPushButton('', self)
         self.delete_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_delete_url.table)))
         self.delete_btn.setIconSize(QtCore.QSize(24,24))
+        self.delete_btn.setToolTip("Delete a format")
         self.connect(self.delete_btn, QtCore.SIGNAL('clicked()'), self.delete_item)
         
         self.delete_all_btn = QtGui.QPushButton('', self)
         self.delete_all_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_trash_url.table)))
         self.delete_all_btn.setIconSize(QtCore.QSize(24,24))
+        self.delete_all_btn.setToolTip("Delete all formats")
         self.connect(self.delete_all_btn, QtCore.SIGNAL('clicked()'), self.delete_all_item)
 
         grid_btn.addWidget(self.fetch_youtube_format_btn, 0, 0)
@@ -3389,7 +3387,7 @@ class QEncode(QtGui.QWidget):
         grid_option_btn = QtGui.QGridLayout()
         grid_option_btn.addWidget(self.single_download_audio_codec_cmb, 2,0)
         grid_option_btn.addWidget(self.single_download_audio_quality_cmb, 2,1)
-        grid_option_btn.addWidget(self.single_download_video_codec_cmb, 3,2)
+        grid_option_btn.addWidget(self.single_download_video_codec_cmb, 2,2)
         
         # default audio quality for ffmpeg is 5
         self.single_download_audio_quality_cmb.setCurrentIndex(5)
@@ -3415,11 +3413,10 @@ class QEncode(QtGui.QWidget):
             self.connect(moods[i], QtCore.SIGNAL("clicked()"), self.single_download_AV_codec_clicked)
 
         self.single_download_AV_codec_clicked()
-
         grid_option_btn.addLayout(button_layout, 1, 0, 1, 2)
 
         self.choose_format_cmb = QtGui.QComboBox()
-        grid_option_btn.addWidget(self.choose_format_cmb, 2,2)
+        grid_option_btn.addWidget(self.choose_format_cmb, 3,2)
         
         self.direct_format_chk = QtGui.QCheckBox("User Format")
         self.direct_format_chk.stateChanged.connect(self.direct_format_input)
@@ -3430,10 +3427,8 @@ class QEncode(QtGui.QWidget):
         self.direct_format.setValidator(onlyInt)
         self.direct_format.setEnabled(False)
         
-        
         grid_option_btn.addWidget(self.direct_format_chk, 3, 0)
         grid_option_btn.addWidget(self.direct_format, 3, 1)
-        
         grid_option_btn.setContentsMargins(0,0,0,0)
         grid_option_btn.setSpacing(5)
         
@@ -3514,7 +3509,6 @@ class QEncode(QtGui.QWidget):
         
         if row_count == 1: self.delete_all_item()
         else:
-        #if row_count > 1:
             column = table.currentColumn();
             for i in range(table.columnCount()):
                 table.setItem(row,i,table.takeItem(row+1,i))
@@ -3532,42 +3526,40 @@ class QEncode(QtGui.QWidget):
         layout = QtGui.QFormLayout()
         
         self.youtube_path_tbl = QtGui.QTableWidget()
-        #self.youtube_path_tbl.verticalHeader().hide()
         self.youtube_path_tbl.setColumnCount(3)
         self.youtube_path_tbl.setHorizontalHeaderItem(0, QtGui.QTableWidgetItem("URL"))
         self.youtube_path_tbl.setHorizontalHeaderItem(1, QtGui.QTableWidgetItem("Description"))
         self.youtube_path_tbl.setHorizontalHeaderItem(2, QtGui.QTableWidgetItem("Status"))
 
-        header = self.youtube_path_tbl.horizontalHeader()
-        #header.setResizeMode(0, QtGui.QHeaderView.ResizeToContents)
-        #header.setResizeMode(1, QtGui.QHeaderView.ResizeToContents)
-        #header.setResizeMode(2, QtGui.QHeaderView.ResizeToContents)        
-        
         grid_table_btn = QtGui.QGridLayout()
-        
         self.add_url_btn = QtGui.QPushButton('', self)
         self.add_url_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_add_row.table)))
         self.add_url_btn.setIconSize(QtCore.QSize(24,24))
+        self.add_url_btn.setToolTip("Add URL")
         self.connect(self.add_url_btn, QtCore.SIGNAL('clicked()'), self.add_url)
 
         self.move_url_up_btn = QtGui.QPushButton('', self)
         self.move_url_up_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_arrow_up.table)))
         self.move_url_up_btn.setIconSize(QtCore.QSize(24,24))
+        self.move_url_up_btn.setToolTip("Move a URL up")
         self.connect(self.move_url_up_btn, QtCore.SIGNAL('clicked()'), partial(move_item_up, self.youtube_path_tbl))
 
         self.move_url_down_btn = QtGui.QPushButton('', self)
         self.move_url_down_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_arrow_down.table)))
         self.move_url_down_btn.setIconSize(QtCore.QSize(24,24))
+        self.move_url_down_btn.setToolTip("Move a URL down")
         self.connect(self.move_url_down_btn, QtCore.SIGNAL('clicked()'), partial(move_item_down, self.youtube_path_tbl))
         
         self.delete_btn = QtGui.QPushButton('', self)
         self.delete_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_delete_url.table)))
         self.delete_btn.setIconSize(QtCore.QSize(24,24))
+        self.delete_btn.setToolTip("Delete a URL")
         self.connect(self.delete_btn, QtCore.SIGNAL('clicked()'), self.delete_item)
         
         self.delete_all_btn = QtGui.QPushButton('', self)
         self.delete_all_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_trash_url.table)))
         self.delete_all_btn.setIconSize(QtCore.QSize(24,24))
+        self.delete_all_btn.setToolTip("Delete All URLs")
         self.connect(self.delete_all_btn, QtCore.SIGNAL('clicked()'), self.delete_all_item)
 
         grid_table_btn.addWidget(self.add_url_btn, 0, 0)
@@ -3578,11 +3570,13 @@ class QEncode(QtGui.QWidget):
         self.load_json_btn = QtGui.QPushButton('', self)
         self.load_json_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_json.table)))
         self.load_json_btn.setIconSize(QtCore.QSize(24,24))
+        self.load_json_btn.setToolTip("Load a list of URLs with JSON format")
         self.connect(self.load_json_btn, QtCore.SIGNAL('clicked()'), self.load_json)
         
         self.save_json_btn = QtGui.QPushButton('', self)
         self.save_json_btn.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_save.table)))
         self.save_json_btn.setIconSize(QtCore.QSize(24,24))
+        self.save_json_btn.setToolTip("Save the list of URLs as JSON format")
         self.connect(self.save_json_btn, QtCore.SIGNAL('clicked()'), self.save_json)
 
         self.global_download_format_btn = QtGui.QPushButton('Fmt: {}'.format(_ydl_format_none), self)
@@ -3634,7 +3628,6 @@ class QEncode(QtGui.QWidget):
 
         self.multiple_download_method = QtGui.QComboBox()
         self.multiple_download_method.addItems(_ydl_multiple_download_method)
-        #self.multiple_download_method.setFixedWidth(75)
         grid_option_btn.addWidget(self.multiple_download_method, 1, 3)
         
         
@@ -3686,14 +3679,11 @@ class QEncode(QtGui.QWidget):
         data["videos"] = v_list
             
         try:
-            #with open(json_save_path, 'w') as f:
             with open(json_save_file, 'w') as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
         except Exception as e:
             self.global_message.appendPlainText("=> Error(save_json) : %s"%str(e))
             msg.message_box(str(e), msg.message_error)
-        #self.global_message.appendPlainText("URL saved at %s"%json_save_path)
-        #msg.message_box("URL saved at %s"%json_save_path, msg.message_normal)
         self.global_message.appendPlainText("URL saved at %s"%json_save_file)
         msg.message_box("URL saved at %s"%json_save_file, msg.message_normal)
             
@@ -3760,13 +3750,6 @@ class QEncode(QtGui.QWidget):
             self.youtube_format_tbl)
         if frm:
             self.choose_format_cmb.addItems(frm)
-        
-    #def timerEvent(self, e):
-    #    if self.process_single:
-    #        self.single_download_progress.setValue(self.single_download_step)
-    #        
-    #    if self.process_multiple:
-    #        self.multiple_download_progress.setValue(self.multiple_download_step)
     
     def single_download_data_read(self):
         try:
@@ -3821,12 +3804,14 @@ class QEncode(QtGui.QWidget):
             self.youtube_path_tbl.item(self.download_count, 0).setBackground(_ydl_color_error)
             self.youtube_path_tbl.item(self.download_count, 2).setText("Error")
             self.global_message.appendPlainText("=> %s"%data)
-            msg.message_box("URL: #%d\n%s"%(self.download_count,data), msg.message_error)
+            #msg.message_box("URL: #%d\n%s"%(self.download_count,data), msg.message_error)
             return
 
         if _file_exist(data):
+            self.process_multiple_file_exist = True
             self.youtube_path_tbl.item(self.download_count, 0).setBackground(_ydl_color_file_exist)
-            self.youtube_path_tbl.item(self.download_count, 2).setText("Already exist")
+            self.youtube_path_tbl.item(self.download_count, 2).setText(_ydl_const_exist_text)
+            print("==> exist")
             return
 
         fn = _find_filename(data)
@@ -3841,28 +3826,38 @@ class QEncode(QtGui.QWidget):
             self.multiple_download_step = int(float(match.group(0)[:-1]))
             
     def multiple_download_finished(self):
-        if self.process_multiple_error or len(self.multiple_download_job_list) == 0:
+        #if self.process_multiple_error or len(self.multiple_download_job_list) == 0:
+        if len(self.multiple_download_job_list) == 0:
             self.enable_multiple_download_buttons()
             self.multiple_download_progress.setValue(100)
             self.multiple_download_timer.stop()
             self.process_multiple = None
 
-            if not self.process_multiple_error:
-                self.youtube_path_tbl.item(self.download_count, 0).setBackground(QtGui.QColor(230,213,89))
+            # check if the last download process has an error
+            if self.process_multiple_error is True:
+                self.youtube_path_tbl.item(self.download_count, 0).setBackground(_ydl_color_error)
+                self.youtube_path_tbl.item(self.download_count, 2).setText("Error")
+            elif self.process_multiple_file_exist is False:
+                self.youtube_path_tbl.item(self.download_count, 0).setBackground(_ydl_color_finished)
                 self.youtube_path_tbl.item(self.download_count, 2).setText("Finished")
-                self.global_message.appendPlainText("=> Miltiple Download Donw@")
-                self.print_download_elasped()
+            
+            self.global_message.appendPlainText("=> Miltiple Download Done")
+            self.print_download_elasped()
             return
             
-        self.youtube_path_tbl.item(self.download_count, 0).setBackground(QtGui.QColor(230,213,89))
-        if self.youtube_path_tbl.item(self.download_count, 2).text() != _ydl_const_exist_text:
+        if self.process_multiple_error is False and self.process_multiple_file_exist is False:
+            self.youtube_path_tbl.item(self.download_count, 0).setBackground(_ydl_color_finished)
             self.youtube_path_tbl.item(self.download_count, 2).setText("Finished")
+            self.global_message.appendPlainText("=> %d-th download finished"%self.download_count)
+                
         self.download_count += 1
         
         sublist = self.multiple_download_job_list[0]
         del self.multiple_download_job_list[0]
         
         try:
+            self.process_multiple_error = False
+            self.process_multiple_file_exis = False
             self.global_message.appendPlainText(self.cmd_to_msg(sublist[0], sublist[1]))
             self.process_multiple.start(sublist[0], sublist[1])
         except (IOError, OSError) as err:
@@ -3875,6 +3870,13 @@ class QEncode(QtGui.QWidget):
         
     def disable_multiple_download_buttons(self):
         self.start_multiple_download_btn.setEnabled(False)
+
+    def disable_multiple_parent_buttons(self):
+        self.start_multiple_download_btn.setEnabled(False)
+        self.cancel_multiple_download_btn.setEnabled(False)
+    def enable_multiple_parent_buttons(self):
+        self.start_multiple_download_btn.setEnabled(True)
+        self.cancel_multiple_download_btn.setEnabled(True)
         
     def print_download_elasped(self):
         download_t2 = time.time()
@@ -3927,7 +3929,7 @@ class QEncode(QtGui.QWidget):
                                     
                     if audio_codec != _ydl_best_audio_codec:
                         arg_list.extend([_ydl_option_audio_quality, 
-                                        self.multiple_download_audio_quality_cmb.currentText()])
+                                        self.multiple_download_audio_quality_cmb.currentText().split(' ')[0]])
                 
                 elif id == 1: # video
                     if self.multiple_download_video_codec_cmb.currentIndex() > 0:
@@ -3969,6 +3971,7 @@ class QEncode(QtGui.QWidget):
                 self.download_t1 = time.time()
                 self.download_count = 0
                 self.process_multiple_error = False
+                self.process_multiple_file_exist = False
                 
                 try:
                     self.global_message.appendPlainText(self.cmd_to_msg(sublist[0], sublist[1]))
@@ -3978,7 +3981,7 @@ class QEncode(QtGui.QWidget):
                     self.global_message.appendPlainText("=> Error: %s"%err)
                     self.enable_single_download_buttons()
             elif dm == get_concurrent_download_text():
-                self.disable_multiple_download_buttons()
+                self.disable_multiple_parent_buttons()
                 pc = ProcessController(self.multiple_download_job_list)
                 #tp = ProcessTracker(pc, self.global_message)
                 tp = ProcessTracker(self, pc, self.global_message)
@@ -3990,15 +3993,15 @@ class QEncode(QtGui.QWidget):
     
     def set_download_button_status(self, status):
         if status == _ydl_download_start:
-            self.disable_multiple_download_buttons()
+            #self.disable_multiple_parent_buttons()
             for k in range(self.youtube_path_tbl.rowCount()):
                 self.youtube_path_tbl.item(k,0).setBackground(_ydl_color_white)
                 self.youtube_path_tbl.item(k,2).setText("")
         elif status == _ydl_download_finish:
-            self.enable_multiple_download_buttons()
+            self.enable_multiple_parent_buttons()
             
     def set_download_status(self, proc):
-        key_num = int(proc.key.split(' ')[1])
+        key_num = int(proc.key.split(' ')[1])-1
         if proc.file_exist:
             self.youtube_path_tbl.item(key_num, 0).setBackground(_ydl_color_file_exist)
             self.youtube_path_tbl.item(key_num, 2).setText("Already exist")
@@ -4043,7 +4046,7 @@ class QEncode(QtGui.QWidget):
                                     
                     if audio_codec != _ydl_best_audio_codec:
                         arg_list.extend([ _ydl_option_audio_quality, 
-                                        self.single_download_audio_quality_cmb.currentText()])
+                                        self.single_download_audio_quality_cmb.currentText().split()[0]])
                 
                 elif id == 1: # video
                     if self.single_download_video_codec_cmb.currentIndex() > 0:
