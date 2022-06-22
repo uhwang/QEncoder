@@ -3389,7 +3389,7 @@ class QEncode(QtGui.QWidget):
         grid_option_btn = QtGui.QGridLayout()
         grid_option_btn.addWidget(self.single_download_audio_codec_cmb, 2,0)
         grid_option_btn.addWidget(self.single_download_audio_quality_cmb, 2,1)
-        grid_option_btn.addWidget(self.single_download_video_codec_cmb, 2,2)
+        grid_option_btn.addWidget(self.single_download_video_codec_cmb, 3,2)
         
         # default audio quality for ffmpeg is 5
         self.single_download_audio_quality_cmb.setCurrentIndex(5)
@@ -3419,7 +3419,7 @@ class QEncode(QtGui.QWidget):
         grid_option_btn.addLayout(button_layout, 1, 0, 1, 2)
 
         self.choose_format_cmb = QtGui.QComboBox()
-        grid_option_btn.addWidget(self.choose_format_cmb, 1,2)
+        grid_option_btn.addWidget(self.choose_format_cmb, 2,2)
         
         self.direct_format_chk = QtGui.QCheckBox("User Format")
         self.direct_format_chk.stateChanged.connect(self.direct_format_input)
